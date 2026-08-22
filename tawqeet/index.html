@@ -1,1 +1,187 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>استعلام موعدي</title>
+<style>
+body{font-family:system-ui;background:#f0f7ff;margin:0;padding:16px}
+.card{background:#fff;max-width:460px;margin:20px auto;padding:20px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+h1{color:#0a58ca;text-align:center;margin:0 0 12px}
+input,button{width:100%;padding:12px;margin:6px 0;border:1px solid #ddd;border-radius:10px;box-sizing:border-box;font-size:15px}
+button{background:#0a58ca;color:#fff;border:0;font-weight:bold;cursor:pointer}
+button:disabled{opacity:.5}
+.item{border:1px solid #e0e0e0;border-radius:12px;padding:12px;margin:10px 0;background:#fafcff}
+.small{color:#666;font-size:13px}
+/* بوابة الاشعارات الاجبارية */
+#notifyGate{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px}
+.gateBox{background:#fff;border-radius:20px;max-width:360px;width:100%;padding:24px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.gateBox h2{margin:0 0 8px;color:#0a58ca}
+.gateIcon{font-size:48px;margin-bottom:10px}
+</style>
+<!-- OneSignal SDK -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: "06265525-0c5a-43c1-8825-2e245ec16a05",
+      notifyButton: { enable: false },
+    });
+  });
+</script>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {getFirestore, collection, query, where, getDocs, updateDoc, doc, serverTimestamp} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+const firebaseConfig = {
+  apiKey: "AIzaSyB3WLRLY5ZKn0TDG55uu7frulpEmj_tze0",
+  authDomain: "eyada-tabiei.firebaseapp.com",
+  projectId: "eyada-tabiei",
+  storageBucket: "eyada-tabiei.firebasestorage.app",
+  messagingSenderId: "58203582971",
+  appId: "1:58203582971:web:6fc58bb0c5573c38f35b5e",
+  measurementId: "G-K06GGML6EF"
+};
+const app=initializeApp(firebaseConfig); const db=getFirestore(app);
+let myBookings=[];
+let pendingPhone = "";
 
+async function checkNotifyAndProceed(){
+  const OneSignal = window.OneSignal;
+  if(!OneSignal){
+    // اذا OneSignal لسه ما حمل، نكمل مباشرة حتى لا نعلق المريض
+    doRealSearch();
+    return;
+  }
+  try{
+    // اربط رقم الموبايل مع جهاز الاشعارات حتى تكدر تدزله اشعار باسمه
+    await OneSignal.login(pendingPhone);
+    await OneSignal.User.addTag("phone", pendingPhone);
+
+    const permission = OneSignal.Notifications.permission;
+    const isSubscribed = OneSignal.User.PushSubscription.optedIn;
+
+    if(permission && isSubscribed){
+      // مشترك فعلاً - اعرض الموعد مباشرة
+      doRealSearch();
+    }else{
+      // مو مشترك - اطلع البوابة الاجبارية
+      document.getElementById('notifyGate').style.display='flex';
+    }
+  }catch(e){
+    console.log("notify error", e);
+    doRealSearch();
+  }
+}
+
+async function requestNotify(){
+  const OneSignal = window.OneSignal;
+  const statusDiv = document.getElementById('gateStatus');
+  statusDiv.innerHTML = "جاري طلب الاذن...";
+  try{
+    await OneSignal.Notifications.requestPermission();
+    // انتظر شوية وتأكد
+    setTimeout(async ()=>{
+      const perm = OneSignal.Notifications.permission;
+      if(perm){
+        document.getElementById('notifyGate').style.display='none';
+        statusDiv.innerHTML="";
+        alert("✅ تم تفعيل الاشعارات - سيصلك تذكير بموعدك");
+        doRealSearch();
+      }else{
+        statusDiv.innerHTML = "❌ يجب الضغط على Allow / سماح حتى يظهر موعدك. حاول مرة أخرى";
+      }
+    }, 800);
+  }catch(e){
+    statusDiv.innerHTML = "حدث خطأ، حاول مرة أخرى";
+  }
+}
+
+async function doRealSearch(){
+  const phone = pendingPhone;
+  const q=query(collection(db,"schedules"), where("patientPhone","==",phone));
+  const snap=await getDocs(q);
+  const div=document.getElementById('results'); div.innerHTML=''; myBookings=[];
+  if(snap.empty){div.innerHTML='<p style="text-align:center;color:#888">لا يوجد حجوزات بهذا الرقم</p>'; return;}
+  snap.forEach(d=>{
+   const b=d.data(); myBookings.push({id:d.id,...b});
+  });
+  myBookings.sort((a,b)=> (a.date+a.time).localeCompare(b.date+b.time));
+  renderResults();
+}
+
+window.searchMy=async()=>{
+ const phone=document.getElementById('phone').value.trim();
+ if(!phone){alert('اكتب رقم موبايلك'); return;}
+ pendingPhone = phone;
+ // بدل ما نبحث مباشرة، نروح نفحص الاشعارات اولاً
+ document.getElementById('results').innerHTML='<p style="text-align:center;color:#0a58ca">⏳ جاري التحقق...</p>';
+ await checkNotifyAndProceed();
+}
+
+function renderResults(){
+ const div=document.getElementById('results'); div.innerHTML='';
+ myBookings.forEach(b=>{
+   const item=document.createElement('div'); item.className='item';
+   const sessionDateTime = new Date(b.date + 'T' + b.time + ':00');
+   const now = new Date();
+   const diffMs = sessionDateTime - now;
+   const diffHours = diffMs / (1000*60*60);
+   const canCancel = diffHours >= 1 && b.status !== 'تعذر';
+   const statusHtml = b.status==='تعذر' ? '<b style="color:#dc3545">تم تسجيل تعذر</b>' : '<b style="color:#198754">مؤكد</b>';
+   item.innerHTML=`
+     <div><b>المعالج:</b> ${b.therapistName}</div>
+     <div><b>التاريخ:</b> ${b.date} - <b>${b.time}</b></div>
+     <div class="small">الحالة: ${statusHtml}</div>
+     ${b.status!=='تعذر' ? `<button onclick="apologize('${b.id}')" ${canCancel?'':'disabled'} style="background:${canCancel?'#dc3545':'#999'};margin-top:8px">${canCancel?'اعتذر عن الحضور (قبل ساعة)':'لا يمكن الاعتذار - اقل من ساعة'}</button>` : `<div class="small">سبب التعذر: ${b.cancelReason||''}</div>`}
+   `;
+   div.appendChild(item);
+ });
+}
+
+window.apologize=async(id)=>{
+ const reason=prompt('اكتب سبب تعذرك عن الحضور:');
+ if(reason===null) return;
+ if(!reason.trim()){alert('اكتب السبب'); return;}
+ const b=myBookings.find(x=>x.id===id);
+ const sessionDateTime = new Date(b.date + 'T' + b.time + ':00');
+ if((sessionDateTime - new Date()) < 3600000){alert('لا يمكن الاعتذار قبل اقل من ساعة من الموعد'); return;}
+ await updateDoc(doc(db,"schedules",id),{status:'تعذر',cancelReason:reason, canceledAt:serverTimestamp()});
+ alert('تم تسجيل تعذرك وسيتم ابلاغ الادارة');
+ searchMy();
+}
+
+window.requestNotify = requestNotify;
+window.skipNotify = ()=>{
+  // اذا تريد تخليها اجباري 100% احذف هذا الزر، بس انا خليته كخيار ثانوي
+  document.getElementById('notifyGate').style.display='none';
+  doRealSearch();
+}
+</script>
+</head>
+<body>
+<div class="card">
+<h1>استعلام عن موعد العلاج</h1>
+<p style="text-align:center;color:#666;font-size:14px">ادخل رقم موبايلك المسجل لعرض جدولك</p>
+<input id="phone" type="tel" placeholder="07xxxxxxxxx">
+<button onclick="searchMy()">عرض مواعيدي</button>
+<div id="results" style="margin-top:16px"></div>
+<p style="text-align:center;color:#888;font-size:12px;margin-top:20px">للاستفسار: 07727244090<br>يمكنك الاعتذار قبل ساعة واحدة فقط من الموعد</p>
+</div>
+
+<!-- بوابة الاشعارات الاجبارية -->
+<div id="notifyGate">
+  <div class="gateBox">
+    <div class="gateIcon">🔔</div>
+    <h2>تنبيه مهم لموعدك</h2>
+    <p style="color:#444;font-size:14px;line-height:1.6">
+      حتى يظهر جدولك، يجب تفعيل <b>اشعارات تذكير الموعد</b><br>
+      سيصلك اشعار قبل موعدك بساعة حتى لا تنسى علاجك
+    </p>
+    <button onclick="requestNotify()" style="background:#0a58ca;margin-top:12px">✅ السماح بالاشعارات وعرض موعدي</button>
+    <div id="gateStatus" class="small" style="margin-top:10px;color:#d00"></div>
+    <p style="margin-top:12px"><a href="javascript:void(0)" onclick="skipNotify()" style="color:#888;font-size:12px;text-decoration:underline">تخطي (غير مستحسن)</a></p>
+  </div>
+</div>
+
+</body>
+</html>
