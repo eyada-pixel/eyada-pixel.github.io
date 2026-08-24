@@ -3,373 +3,276 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>عيادة التأهيل - v6 يشتغل 100%</title>
+<title>عيادة التأهيل - مربوط OneSignal</title>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: "06265525-0c5a-43c1-8825-2e245ec16a05",
+      notifyButton: { enable: true },
+      allowLocalhostAsSecureOrigin: true,
+    });
+    console.log("OneSignal Ready ✅ AppID: 06265525-0c5a-43c1-8825-2e245ec16a05");
+  });
+</script>
 <style>body{font-family:'Tajawal',sans-serif;background:#f6f8fc}</style>
 </head>
 <body>
-<div id="root">
-  <div style="padding:40px;text-align:center;color:#64748b">
-    <div style="font-size:40px">⏳</div>
-    <div style="margin-top:12px;font-weight:bold">جاري تحميل العيادة...</div>
-    <div id="debug" style="margin-top:20px;background:white;border:2px dashed #cbd5e1;padding:16px;border-radius:16px;text-align:right;font-size:12px;max-width:600px;margin-left:auto;margin-right:auto;white-space:pre-wrap">تحميل...</div>
-  </div>
-</div>
-
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script>
-// شاشة عرض الأخطاء
-function logDebug(msg){
-  const el = document.getElementById('debug');
-  if(el) el.textContent += "\n" + new Date().toLocaleTimeString() + " - " + msg;
-  console.log(msg);
-}
-window.onerror = function(m, s, l, c, e){
-  logDebug("❌ خطأ: " + m + " في السطر " + l);
-}
+const firebaseConfig = {
+  apiKey: "AIzaSyB3WLRLY5ZKn0TDG55uu7frulpEmj_tze0",
+  authDomain: "eyada-tabiei.firebaseapp.com",
+  projectId: "eyada-tabiei",
+  storageBucket: "eyada-tabiei.firebasestorage.app",
+  messagingSenderId: "58203582971",
+  appId: "1:58203582971:web:6fc58bb0c5573c38f35b5e"
+};
+let db=null;
+try{ if(!firebase.apps.length) firebase.initializeApp(firebaseConfig); db=firebase.firestore(); }catch(e){ console.error(e); }
+const { useState, useEffect, useRef } = React;
+const daysMap = { 6: "السبت", 0: "الأحد", 1: "الاثنين", 2: "الثلاثاء", 3: "الأربعاء", 4: "الخميس", 5: "الجمعة (عطلة)" };
+const daysOrder = [6, 0, 1, 2, 3, 4];
+const injuryTypes = ["خشونة ركبة", "انزلاق غضروفي", "جلطة", "قطع رباط", "كسر", "تأهيل بعد عملية", "شد عضلي", "أخرى"];
+function formatToWhatsApp(phone){ if(!phone) return "#"; let p=phone.replace(/\D/g,""); if(p.startsWith("0")) p="964"+p.substring(1); if(!p.startsWith("964")) p="964"+p; return `https://wa.me/${p}`; }
 
-logDebug("1. بدء تحميل الصفحة");
-</script>
+function App(){
+  const [isLoggedIn,setIsLoggedIn]=useState(false);
+  const [code,setCode]=useState("");
+  const [error,setError]=useState("");
+  const [tab,setTab]=useState("today-sessions");
+  const [alert,setAlert]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [schedules,setSchedules]=useState([]);
+  const [patients,setPatients]=useState([]);
+  const [therapists,setTherapists]=useState([]);
+  const [newPatient,setNewPatient]=useState({name:"",phone:"",gender:"ذكر",age_value:"",age_unit:"سنة",address:"",injury_type:"",therapist_name:""});
+  const [selectedDays,setSelectedDays]=useState([]);
+  const [sessionTimes,setSessionTimes]=useState({6:"09:00",0:"09:00",1:"09:00",2:"09:00",3:"09:00",4:"09:00"});
+  const [newTherapist,setNewTherapist]=useState({name:"",phone:"",specialization:""});
+  const [editingPatient,setEditingPatient]=useState(null);
+  const [notifTitle,setNotifTitle]=useState("");
+  const [notifMsg,setNotifMsg]=useState("");
+  const [notifTarget,setNotifTarget]=useState("all");
+  const alertRef=useRef(null);
 
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js" onload="logDebug('2. React تحمل ✅')" onerror="logDebug('❌ React ما تحمل - تأكد من الانترنت')"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" onload="logDebug('3. ReactDOM تحمل ✅')" onerror="logDebug('❌ ReactDOM ما تحمل')"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" onload="logDebug('4. Firebase App تحمل ✅')" onerror="logDebug('❌ Firebase App ما تحمل')"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js" onload="logDebug('5. Firestore تحمل ✅ - جاهز للتشغيل')" onerror="logDebug('❌ Firestore ما تحمل')"></script>
+  useEffect(()=>{ try{ const saved=localStorage.getItem("eyada_clinic_login"); if(saved){ const d=JSON.parse(saved); if(d.code==="0772"){ setIsLoggedIn(true); setCode(d.code); } } }catch(e){} },[]);
+  const handleLogin=()=>{ if(code==="0772"){ setIsLoggedIn(true); localStorage.setItem("eyada_clinic_login", JSON.stringify({code,timestamp:Date.now()})); setError(""); } else setError("كود الدخول غير صحيح"); };
+  const handleLogout=()=>{ setIsLoggedIn(false); localStorage.removeItem("eyada_clinic_login"); setCode(""); };
+  const showAlert=(msg,type="info")=>{ setAlert({msg,type}); if(alertRef.current) clearTimeout(alertRef.current); alertRef.current=setTimeout(()=>setAlert(null),4000); };
+  const fetchData=async()=>{ setLoading(true); try{ const [sSnap,pSnap,tSnap]=await Promise.all([db.collection("schedules").get(),db.collection("patients").get(),db.collection("therapists").get()]); setSchedules(sSnap.docs.map(d=>({id:d.id,...d.data()}))); setPatients(pSnap.docs.map(d=>({id:d.id,...d.data()}))); setTherapists(tSnap.docs.map(d=>({id:d.id,...d.data()}))); }catch(err){ showAlert("خطأ جلب البيانات","error"); }finally{ setLoading(false); } };
+  useEffect(()=>{ if(isLoggedIn&&db) fetchData(); },[isLoggedIn]);
 
-<script>
-setTimeout(()=>{
-  logDebug("6. جاري تشغيل التطبيق...");
-  
-  if(typeof React === 'undefined'){ logDebug("❌ React غير موجود - الانترنت ضعيف"); return; }
-  if(typeof firebase === 'undefined'){ logDebug("❌ Firebase غير موجود"); return; }
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyB3WLRLY5ZKn0TDG55uu7frulpEmj_tze0",
-    authDomain: "eyada-tabiei.firebaseapp.com",
-    projectId: "eyada-tabiei",
-    storageBucket: "eyada-tabiei.firebasestorage.app",
-    messagingSenderId: "58203582971",
-    appId: "1:58203582971:web:6fc58bb0c5573c38f35b5e"
-  };
-
-  let db = null;
-  try {
-    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-    db = firebase.firestore();
-    logDebug("7. Firebase تهيأ ✅ - " + firebaseConfig.projectId);
-  } catch(e){ logDebug("❌ خطأ Firebase: " + e.message); }
-
-  const { useState, useEffect, useRef } = React;
-  const daysMap = { 6: "السبت", 0: "الأحد", 1: "الاثنين", 2: "الثلاثاء", 3: "الأربعاء", 4: "الخميس", 5: "الجمعة (عطلة)" };
-  const daysOrder = [6, 0, 1, 2, 3, 4];
-  const injuryTypes = ["خشونة ركبة", "انزلاق غضروفي", "جلطة", "قطع رباط", "كسر", "تأهيل بعد عملية", "شد عضلي", "أخرى"];
-
-  function formatToWhatsApp(phone){
-    if(!phone) return "#";
-    let p = phone.replace(/\D/g,"");
-    if(p.startsWith("0")) p = "964" + p.substring(1);
-    if(!p.startsWith("964")) p = "964" + p;
-    return `https://wa.me/${p}`;
-  }
-
-  function App(){
-    const [isLoggedIn,setIsLoggedIn] = useState(false);
-    const [code,setCode] = useState("");
-    const [error,setError] = useState("");
-    const [tab,setTab] = useState("today-sessions");
-    const [alert,setAlert] = useState(null);
-    const [loading,setLoading] = useState(true);
-    const [schedules,setSchedules] = useState([]);
-    const [patients,setPatients] = useState([]);
-    const [therapists,setTherapists] = useState([]);
-    const [newPatient,setNewPatient] = useState({name:"",phone:"",gender:"ذكر",age_value:"",age_unit:"سنة",address:"",injury_type:"",therapist_name:""});
-    const [selectedDays,setSelectedDays] = useState([]);
-    const [sessionTimes,setSessionTimes] = useState({6:"09:00",0:"09:00",1:"09:00",2:"09:00",3:"09:00",4:"09:00"});
-    const [newTherapist,setNewTherapist] = useState({name:"",phone:"",specialization:""});
-    const [editingPatient,setEditingPatient] = useState(null);
-    const [notifTitle,setNotifTitle] = useState("");
-    const [notifMsg,setNotifMsg] = useState("");
-    const alertRef = useRef(null);
-
-    useEffect(()=>{
-      try{
-        const saved = localStorage.getItem("eyada_clinic_login");
-        if(saved){
-          const data = JSON.parse(saved);
-          if(data.code==="0772"){ setIsLoggedIn(true); setCode(data.code); }
-        }
-      }catch(e){}
-    },[]);
-
-    const handleLogin = ()=>{
-      if(code==="0772"){
-        setIsLoggedIn(true);
-        localStorage.setItem("eyada_clinic_login", JSON.stringify({code, timestamp: Date.now()}));
-        setError("");
-      } else setError("كود الدخول غير صحيح");
-    };
-    const handleLogout = ()=>{ setIsLoggedIn(false); localStorage.removeItem("eyada_clinic_login"); setCode(""); };
-    const showAlert = (msg,type="info")=>{
-      setAlert({msg,type});
-      if(alertRef.current) clearTimeout(alertRef.current);
-      alertRef.current = setTimeout(()=>setAlert(null),4000);
-    };
-
-    const fetchData = async ()=>{
-      setLoading(true);
-      try{
-        const [sSnap,pSnap,tSnap] = await Promise.all([
-          db.collection("schedules").get(),
-          db.collection("patients").get(),
-          db.collection("therapists").get()
-        ]);
-        setSchedules(sSnap.docs.map(d=>({id:d.id,...d.data()})));
-        setPatients(pSnap.docs.map(d=>({id:d.id,...d.data()})));
-        setTherapists(tSnap.docs.map(d=>({id:d.id,...d.data()})));
-        logDebug("✅ تم جلب البيانات: "+sSnap.size+" جلسة، "+pSnap.size+" مريض، "+tSnap.size+" كادر");
-      }catch(err){
-        logDebug("❌ خطأ جلب البيانات: " + err.message + " - تأكد من Rules في Firebase");
-        showAlert("خطأ في جلب البيانات - افتح Console", "error");
-      }finally{ setLoading(false); }
-    };
-
-    useEffect(()=>{ if(isLoggedIn && db) fetchData(); },[isLoggedIn]);
-
-    if(!isLoggedIn){
-      return React.createElement("div", {className:"min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100 p-4"},
-        React.createElement("div", {className:"w-full max-w-sm bg-white rounded-[24px] shadow-2xl p-8 border border-slate-200"},
-          React.createElement("div", {className:"text-center mb-8"},
-            React.createElement("div", {className:"w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-white font-bold text-2xl"}, "ع"),
-            React.createElement("h1", {className:"text-2xl font-bold text-slate-800"}, "عيادة التأهيل"),
-            React.createElement("p", {className:"text-sm text-slate-500 mt-2"}, "v6 - يشتغل 100%")
-          ),
-          React.createElement("div", {className:"space-y-4"},
-            React.createElement("input", {value:code,onChange:(e)=>setCode(e.target.value),onKeyDown:(e)=>e.key==="Enter"&&handleLogin(),placeholder:"كود الدخول 0772",className:"w-full h-12 px-4 rounded-xl border-2 border-slate-200 focus:border-blue-500 outline-none text-center text-lg"}),
-            error && React.createElement("p", {className:"text-red-600 text-sm text-center"}, "❌ "+error),
-            React.createElement("button", {onClick:handleLogin,className:"w-full h-12 bg-blue-600 text-white rounded-xl font-bold"}, "🔓 دخول")
-          ),
-          React.createElement("div", {className:"mt-6 p-3 bg-slate-50 rounded-xl text-[10px] text-slate-500"},
-            "اذا ما اشتغل، افتح المتصفح واضغط F12 وشوف تبويب Console وصورلي الخطأ"
-          )
-        )
-      );
-    }
-
-    const getTodayDate = ()=> new Date().toISOString().split("T")[0];
-    const todaySessions = schedules.filter(s=>s.date===getTodayDate()).sort((a,b)=>(a.time||"00:00").localeCompare(b.time||"00:00"));
-    const totalRevenue = todaySessions.reduce((sum,s)=>sum+(Number(s.price)||0),0);
-    const paidRevenue = todaySessions.filter(s=>s.paid).reduce((sum,s)=>sum+(Number(s.price)||0),0);
-
-    const handleAddPatient = async ()=>{
-      if(!newPatient.name||!newPatient.phone){ showAlert("الاسم والموبايل مطلوبان","error"); return; }
-      if(selectedDays.length===0){ showAlert("اختر أيام الحجز","error"); return; }
-      try{
-        const ageString = newPatient.age_value ? `${newPatient.age_value} ${newPatient.age_unit}` : "";
-        await db.collection("patients").add({name:newPatient.name,phone:newPatient.phone,gender:newPatient.gender,age:ageString,age_value:newPatient.age_value,age_unit:newPatient.age_unit,address:newPatient.address,injury_type:newPatient.injury_type,therapistName:newPatient.therapist_name,createdAt:new Date()});
-        const today = new Date();
-        const promises=[];
-        for(let i=0;i<12;i++){
-          const date = new Date(today); date.setDate(date.getDate()+i*7);
-          for(const dayNum of selectedDays){
-            const sd = new Date(date); sd.setDate(sd.getDate() + (dayNum - sd.getDay()));
-            promises.push(db.collection("schedules").add({patientName:newPatient.name,patientPhone:newPatient.phone,therapistName:newPatient.therapist_name,date:sd.toISOString().split("T")[0],time:sessionTimes[dayNum],status:"قادمة",paid:false,price:"",injury_type:newPatient.injury_type,createdAt:new Date()}));
-          }
-        }
-        await Promise.all(promises);
-        showAlert(`✅ تمت إضافة ${newPatient.name} مع ${promises.length} جلسة`,"success");
-        setNewPatient({name:"",phone:"",gender:"ذكر",age_value:"",age_unit:"سنة",address:"",injury_type:"",therapist_name:""}); setSelectedDays([]);
-        fetchData();
-      }catch(e){ showAlert("خطأ في الإضافة: "+e.message,"error"); }
-    };
-
-    const handleAddTherapist = async ()=>{
-      if(!newTherapist.name||!newTherapist.phone){ showAlert("اسم ورقم المعالج مطلوب","error"); return; }
-      try{
-        await db.collection("therapists").add({name:newTherapist.name,phone:newTherapist.phone,specialization:newTherapist.specialization,createdAt:new Date()});
-        showAlert(`✅ تمت إضافة ${newTherapist.name}`,"success");
-        setNewTherapist({name:"",phone:"",specialization:""}); fetchData();
-      }catch(e){ showAlert("خطأ","error"); }
-    };
-
-    const updateSession = async (id,data)=>{
-      await db.collection("schedules").doc(id).update(data);
-      setSchedules(schedules.map(s=>s.id===id?{...s,...data}:s));
-    };
-
-    return React.createElement("div", {className:"min-h-screen bg-[#f6f8fc]"},
-      React.createElement("header", {className:"sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm"},
-        React.createElement("div", {className:"max-w-[1280px] mx-auto px-4 h-16 flex items-center justify-between"},
-          React.createElement("div", {className:"flex items-center gap-3"},
-            React.createElement("div", {className:"w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold"}, "ع"),
-            React.createElement("div", {},
-              React.createElement("div", {className:"font-bold text-[15px]"}, "عيادة التأهيل v6"),
-              React.createElement("div", {className:"text-[10px] text-slate-500"}, "يشتغل 100% - مضمون")
-            )
-          ),
-          React.createElement("button", {onClick:handleLogout,className:"h-9 px-4 rounded-full bg-red-100 text-red-700 text-[12px] font-bold"}, "🚪 خروج")
-        )
-      ),
-      React.createElement("div", {className:"sticky top-16 z-20 bg-white border-b"},
-        React.createElement("div", {className:"max-w-[1280px] mx-auto px-4 flex gap-2 overflow-x-auto"},
-          [{id:"today-sessions",label:"🕐 جلسات اليوم"},{id:"add-patient",label:"➕ إضافة مراجع"},{id:"patients-list",label:"👥 المراجعين"},{id:"therapists",label:"👨⚕ الكادر"},{id:"notifications",label:"🔔 الإشعارات"}].map(t=>
-            React.createElement("button", {key:t.id,onClick:()=>setTab(t.id),className:`h-12 px-4 whitespace-nowrap border-b-2 text-[13px] font-medium ${tab===t.id?"border-b-blue-600 text-blue-600 bg-blue-50/50":"border-b-transparent text-slate-600"}`}, t.label)
-          )
-        )
-      ),
-      alert && React.createElement("div", {className:`fixed z-50 top-20 left-1/2 -translate-x-1/2 px-5 py-3 rounded-2xl shadow-xl text-[13px] font-bold ${alert.type==="error"?"bg-red-600 text-white":alert.type==="success"?"bg-emerald-600 text-white":"bg-blue-600 text-white"}`}, alert.msg),
-
-      React.createElement("main", {className:"max-w-[1280px] mx-auto p-4 pb-10"},
-        loading && React.createElement("div", {className:"text-center py-10"}, "⏳ جاري التحميل..."),
-
-        !loading && tab==="today-sessions" && React.createElement("div", {className:"space-y-4"},
-          React.createElement("div", {className:"grid grid-cols-2 md:grid-cols-3 gap-3"},
-            React.createElement("div", {className:"bg-white rounded-2xl border p-5"}, React.createElement("div", {className:"text-[11px] text-blue-600 font-bold"}, "🕐 جلسات اليوم"), React.createElement("div", {className:"text-3xl font-bold text-blue-600 mt-2"}, todaySessions.length)),
-            React.createElement("div", {className:"bg-white rounded-2xl border p-5"}, React.createElement("div", {className:"text-[11px] font-bold"}, "💰 الإجمالي"), React.createElement("div", {className:"text-2xl font-bold mt-2"}, totalRevenue.toLocaleString()+" د.ع")),
-            React.createElement("div", {className:"bg-white rounded-2xl border p-5"}, React.createElement("div", {className:"text-[11px] text-emerald-600 font-bold"}, "✅ مدفوع"), React.createElement("div", {className:"text-2xl font-bold text-emerald-600 mt-2"}, paidRevenue.toLocaleString()+" د.ع"))
-          ),
-          React.createElement("div", {className:"bg-white rounded-[20px] border shadow-sm overflow-hidden"},
-            React.createElement("div", {className:"p-5 border-b bg-slate-50 font-bold text-[14px]"}, `📅 جدول اليوم - ${new Date().toLocaleDateString("ar-EG")} - ${todaySessions.length} جلسة`),
-            todaySessions.length>0 ?
-            React.createElement("div", {className:"overflow-x-auto"},
-              React.createElement("table", {className:"w-full text-[13px]"},
-                React.createElement("thead", {className:"bg-slate-100 text-[11px] text-slate-600"},
-                  React.createElement("tr", {}, React.createElement("th", {className:"p-3 text-right"}, "🕐 الوقت"), React.createElement("th", {className:"p-3 text-right"}, "👤 المراجع"), React.createElement("th", {className:"p-3 text-right"}, "👨⚕ المعالج"), React.createElement("th", {className:"p-3 text-right"}, "📋 الحالة"), React.createElement("th", {className:"p-3 text-right"}, "💰 مبلغ (د.ع)"), React.createElement("th", {className:"p-3 text-right"}, "💳"), React.createElement("th", {className:"p-3 text-right"}, "💬"))
-                ),
-                React.createElement("tbody", {},
-                  todaySessions.map(s=>React.createElement("tr", {key:s.id,className:"border-t hover:bg-blue-50/50"},
-                    React.createElement("td", {className:"p-3 font-bold text-blue-600"}, s.time||"--:--"),
-                    React.createElement("td", {className:"p-3"}, React.createElement("div", {className:"font-bold"}, s.patientName), React.createElement("div", {className:"text-[11px] text-slate-500"}, s.injury_type||"-")),
-                    React.createElement("td", {className:"p-3"}, s.therapistName||"-"),
-                    React.createElement("td", {className:"p-3"},
-                      React.createElement("select", {value:s.status||"قادمة",onChange:(e)=>updateSession(s.id,{status:e.target.value}),className:"text-[11px] px-2 py-1 rounded-full border font-bold"},
-                        React.createElement("option", {}, "قادمة"), React.createElement("option", {}, "مكتملة"), React.createElement("option", {}, "ملغاة")
-                      )
-                    ),
-                    React.createElement("td", {className:"p-3"},
-                      React.createElement("input", {type:"number",defaultValue:s.price,onBlur:(e)=>{ if(e.target.value!==s.price) updateSession(s.id,{price:e.target.value}); },placeholder:"0",className:"w-20 h-8 px-2 rounded-lg border text-[12px]"})
-                    ),
-                    React.createElement("td", {className:"p-3"},
-                      React.createElement("button", {onClick:()=>updateSession(s.id,{paid:!s.paid}),className:`px-3 py-1 rounded-full text-[11px] font-bold ${s.paid?"bg-emerald-600 text-white":"bg-red-600 text-white"}`}, s.paid?"✓ مدفوع":"✗ غير مدفوع")
-                    ),
-                    React.createElement("td", {className:"p-3"},
-                      React.createElement("a", {href:formatToWhatsApp(s.patientPhone),target:"_blank",className:"w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center"}, "💬")
-                    )
-                  ))
-                )
-              )
-            )
-            : React.createElement("div", {className:"p-12 text-center"}, "😊 لا توجد جلسات اليوم")
-          )
+  if(!isLoggedIn){
+    return React.createElement("div", {className:"min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-slate-100 p-4"},
+      React.createElement("div", {className:"w-full max-w-sm bg-white rounded-[24px] shadow-2xl p-8 border"},
+        React.createElement("div", {className:"text-center mb-8"},
+          React.createElement("div", {className:"w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-white font-bold text-2xl"}, "ع"),
+          React.createElement("h1", {className:"text-2xl font-bold"}, "عيادة التأهيل"),
+          React.createElement("p", {className:"text-sm text-slate-500 mt-2"}, "مربوط OneSignal ✅ AppID جاهز")
         ),
-
-        !loading && tab==="add-patient" && React.createElement("div", {className:"grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-4"},
-          React.createElement("div", {className:"bg-white rounded-[20px] border p-6"},
-            React.createElement("h2", {className:"font-bold mb-4"}, "➕ إضافة مريض - العمر بالأشهر والأيام"),
-            React.createElement("div", {className:"space-y-3"},
-              React.createElement("div", {className:"grid grid-cols-2 gap-3"},
-                React.createElement("input", {value:newPatient.name,onChange:(e)=>setNewPatient({...newPatient,name:e.target.value}),placeholder:"الاسم *",className:"h-10 px-3 rounded-xl border text-[13px]"}),
-                React.createElement("input", {value:newPatient.phone,onChange:(e)=>setNewPatient({...newPatient,phone:e.target.value}),placeholder:"الموبايل *",className:"h-10 px-3 rounded-xl border text-[13px]",style:{direction:"ltr"}})
-              ),
-              React.createElement("div", {className:"grid grid-cols-3 gap-2"},
-                React.createElement("input", {type:"number",value:newPatient.age_value,onChange:(e)=>setNewPatient({...newPatient,age_value:e.target.value}),placeholder:"العمر",className:"h-10 px-3 rounded-xl border text-[13px]"}),
-                React.createElement("select", {value:newPatient.age_unit,onChange:(e)=>setNewPatient({...newPatient,age_unit:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"},
-                  React.createElement("option", {}, "سنة"), React.createElement("option", {}, "شهر"), React.createElement("option", {}, "أشهر"), React.createElement("option", {}, "يوم"), React.createElement("option", {}, "أيام")
-                ),
-                React.createElement("select", {value:newPatient.gender,onChange:(e)=>setNewPatient({...newPatient,gender:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"},
-                  React.createElement("option", {}, "ذكر"), React.createElement("option", {}, "أنثى")
-                )
-              ),
-              React.createElement("input", {value:newPatient.address,onChange:(e)=>setNewPatient({...newPatient,address:e.target.value}),placeholder:"العنوان",className:"w-full h-10 px-3 rounded-xl border text-[13px]"}),
-              React.createElement("div", {className:"grid grid-cols-2 gap-3"},
-                React.createElement("select", {value:newPatient.injury_type,onChange:(e)=>setNewPatient({...newPatient,injury_type:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"},
-                  React.createElement("option", {value:""}, "نوع الإصابة..."), injuryTypes.map(t=>React.createElement("option", {key:t,value:t}, t))
-                ),
-                React.createElement("select", {value:newPatient.therapist_name,onChange:(e)=>setNewPatient({...newPatient,therapist_name:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"},
-                  React.createElement("option", {value:""}, "المعالج..."), therapists.map(t=>React.createElement("option", {key:t.id,value:t.name}, t.name))
-                )
-              )
-            )
-          ),
-          React.createElement("div", {className:"bg-white rounded-[20px] border p-6 h-fit"},
-            React.createElement("h3", {className:"font-bold mb-4 text-[14px]"}, "📅 أيام الحجز"),
-            React.createElement("div", {className:"space-y-2"},
-              daysOrder.map(day=>React.createElement("label", {key:day,className:`p-3 rounded-xl border-2 flex items-center gap-3 cursor-pointer ${selectedDays.includes(day)?"border-blue-600 bg-blue-50":"border-slate-200"}`},
-                React.createElement("input", {type:"checkbox",checked:selectedDays.includes(day),onChange:(e)=>{ if(e.target.checked) setSelectedDays([...selectedDays,day]); else setSelectedDays(selectedDays.filter(d=>d!==day)); }}),
-                React.createElement("span", {className:"font-bold text-[13px] flex-1"}, daysMap[day]),
-                React.createElement("input", {type:"time",value:sessionTimes[day],onChange:(e)=>setSessionTimes({...sessionTimes,[day]:e.target.value}),className:"h-8 px-2 rounded-lg border text-[12px]"})
-              ))
-            ),
-            React.createElement("button", {onClick:handleAddPatient,className:"mt-6 w-full h-11 bg-blue-600 text-white rounded-xl font-bold"}, "✅ حفظ المريض والجلسات")
-          )
-        ),
-
-        !loading && tab==="patients-list" && React.createElement("div", {className:"bg-white rounded-[20px] border p-6"},
-          React.createElement("h2", {className:"font-bold mb-4"}, `👥 المراجعين (${patients.length})`),
-          React.createElement("div", {className:"grid grid-cols-1 md:grid-cols-2 gap-3"},
-            patients.map(p=>React.createElement("div", {key:p.id,className:"p-4 rounded-2xl border hover:border-blue-300"},
-              React.createElement("div", {className:"flex justify-between"},
-                React.createElement("div", {className:"font-bold text-[13px]"}, p.name),
-                React.createElement("div", {className:"flex gap-1"},
-                  React.createElement("a", {href:formatToWhatsApp(p.phone),target:"_blank",className:"w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center"}, "💬"),
-                  React.createElement("button", {onClick:()=>{ const newName = prompt("الاسم الجديد:", p.name); if(newName){ db.collection("patients").doc(p.id).update({name:newName}).then(()=>fetchData()); } },className:"w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"}, "✏️")
-                )
-              ),
-              React.createElement("div", {className:"text-[11px] text-slate-500 mt-1"}, `📱 ${p.phone} • ${p.age||"-"} • 📍 ${p.address||"-"}`)
-            ))
-          )
-        ),
-
-        !loading && tab==="therapists" && React.createElement("div", {className:"grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-4"},
-          React.createElement("div", {className:"bg-white rounded-[20px] border p-6 h-fit"},
-            React.createElement("h3", {className:"font-bold mb-4"}, "➕ إضافة كادر"),
-            React.createElement("div", {className:"space-y-3"},
-              React.createElement("input", {value:newTherapist.name,onChange:(e)=>setNewTherapist({...newTherapist,name:e.target.value}),placeholder:"اسم المعالج *",className:"w-full h-10 px-3 rounded-xl border text-[13px]"}),
-              React.createElement("input", {value:newTherapist.phone,onChange:(e)=>setNewTherapist({...newTherapist,phone:e.target.value}),placeholder:"رقم الهاتف * 0770...",className:"w-full h-10 px-3 rounded-xl border text-[13px]",style:{direction:"ltr"}}),
-              React.createElement("input", {value:newTherapist.specialization,onChange:(e)=>setNewTherapist({...newTherapist,specialization:e.target.value}),placeholder:"التخصص",className:"w-full h-10 px-3 rounded-xl border text-[13px]"}),
-              React.createElement("button", {onClick:handleAddTherapist,className:"w-full h-11 bg-blue-600 text-white rounded-xl font-bold"}, "✅ إضافة")
-            )
-          ),
-          React.createElement("div", {className:"bg-white rounded-[20px] border p-6"},
-            React.createElement("h3", {className:"font-bold mb-4"}, `👨⚕ الكادر (${therapists.length})`),
-            React.createElement("div", {className:"space-y-2"},
-              therapists.map(t=>React.createElement("div", {key:t.id,className:"p-4 rounded-2xl border flex justify-between items-center"},
-                React.createElement("div", {},
-                  React.createElement("div", {className:"font-bold text-[13px]"}, t.name),
-                  React.createElement("div", {className:"text-[11px] text-slate-500"}, `📱 ${t.phone} - ${t.specialization||"-"}`)
-                ),
-                React.createElement("div", {className:"flex gap-1"},
-                  React.createElement("a", {href:formatToWhatsApp(t.phone),target:"_blank",className:"w-8 h-8 bg-green-100 rounded-full flex items-center justify-center"}, "💬"),
-                  React.createElement("button", {onClick:async()=>{ if(confirm("حذف؟")){ await db.collection("therapists").doc(t.id).delete(); fetchData(); }},className:"w-8 h-8 bg-red-50 text-red-600 rounded-full flex items-center justify-center"}, "🗑️")
-                )
-              ))
-            )
-          )
-        ),
-
-        !loading && tab==="notifications" && React.createElement("div", {className:"bg-white rounded-[20px] border p-6"},
-          React.createElement("h2", {className:"font-bold text-[16px] mb-2"}, "🔔 الإشعارات - OneSignal"),
-          React.createElement("p", {className:"text-[12px] text-slate-500 mb-4"}, "للتفعيل: 1- ادخل onesignal.com 2- انسخ App ID 3- ضعه في الكود السطر 15"),
-          React.createElement("div", {className:"space-y-3"},
-            React.createElement("input", {value:notifTitle,onChange:(e)=>setNotifTitle(e.target.value),placeholder:"عنوان الإشعار",className:"w-full h-11 px-4 rounded-xl border-2 text-[13px]"}),
-            React.createElement("textarea", {value:notifMsg,onChange:(e)=>setNotifMsg(e.target.value),placeholder:"نص الرسالة...",rows:3,className:"w-full p-4 rounded-xl border-2 text-[13px]"}),
-            React.createElement("button", {onClick:()=>{ if(!notifTitle||!notifMsg){ alert("اكتب عنوان ورسالة"); return; } if(typeof OneSignal!=='undefined'){ OneSignal.showSlidedownPrompt(); } alert("لإرسال الإشعار الحقيقي، تحتاج تضع مفاتيح OneSignal في Firebase Functions - حالياً التنبيه يظهر للمشتركين في الموقع"); },className:"w-full h-12 bg-blue-600 text-white rounded-xl font-bold"}, "🚀 إرسال تجريبي"),
-            React.createElement("a", {href:"https://app.onesignal.com",target:"_blank",className:"block text-center w-full h-10 bg-slate-900 text-white rounded-xl leading-10 font-bold text-[12px]"}, "🔗 فتح لوحة OneSignal")
-          )
+        React.createElement("div", {className:"space-y-4"},
+          React.createElement("input", {value:code,onChange:(e)=>setCode(e.target.value),onKeyDown:(e)=>e.key==="Enter"&&handleLogin(),placeholder:"0772",className:"w-full h-12 px-4 rounded-xl border-2 text-center text-lg"}),
+          error&&React.createElement("p", {className:"text-red-600 text-sm text-center"}, "❌ "+error),
+          React.createElement("button", {onClick:handleLogin,className:"w-full h-12 bg-blue-600 text-white rounded-xl font-bold"}, "🔓 دخول")
         )
       )
     );
   }
 
-  try{
-    logDebug("8. محاولة رسم التطبيق...");
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(React.createElement(App));
-    logDebug("✅ التطبيق اشتغل بنجاح - اذا تشوف هاي الرسالة يعني الملف سليم");
-    setTimeout(()=>{ const d=document.getElementById('debug'); if(d) d.style.display='none'; }, 3000);
-  }catch(e){
-    logDebug("❌ فشل الرسم: " + e.message + "\n" + e.stack);
-  }
-}, 1500);
+  const getTodayDate=()=>new Date().toISOString().split("T")[0];
+  const todaySessions=schedules.filter(s=>s.date===getTodayDate()).sort((a,b)=>(a.time||"00:00").localeCompare(b.time||"00:00"));
+  const totalRevenue=todaySessions.reduce((s,x)=>s+(Number(x.price)||0),0);
+  const paidRevenue=todaySessions.filter(s=>s.paid).reduce((s,x)=>s+(Number(x.price)||0),0);
+
+  const handleAddPatient=async()=>{
+    if(!newPatient.name||!newPatient.phone){ showAlert("الاسم والموبايل مطلوبان","error"); return; }
+    if(selectedDays.length===0){ showAlert("اختر أيام الحجز","error"); return; }
+    try{
+      const ageString=newPatient.age_value?`${newPatient.age_value} ${newPatient.age_unit}`:"";
+      await db.collection("patients").add({name:newPatient.name,phone:newPatient.phone,gender:newPatient.gender,age:ageString,age_value:newPatient.age_value,age_unit:newPatient.age_unit,address:newPatient.address,injury_type:newPatient.injury_type,therapistName:newPatient.therapist_name,createdAt:new Date()});
+      const today=new Date(); const promises=[];
+      for(let i=0;i<12;i++){ const date=new Date(today); date.setDate(date.getDate()+i*7); for(const dayNum of selectedDays){ const sd=new Date(date); sd.setDate(sd.getDate()+(dayNum-sd.getDay())); promises.push(db.collection("schedules").add({patientName:newPatient.name,patientPhone:newPatient.phone,therapistName:newPatient.therapist_name,date:sd.toISOString().split("T")[0],time:sessionTimes[dayNum],status:"قادمة",paid:false,price:"",injury_type:newPatient.injury_type,createdAt:new Date()})); } }
+      await Promise.all(promises); showAlert(`✅ ${newPatient.name} - ${promises.length} جلسة`,"success"); setNewPatient({name:"",phone:"",gender:"ذكر",age_value:"",age_unit:"سنة",address:"",injury_type:"",therapist_name:""}); setSelectedDays([]); fetchData();
+    }catch(e){ showAlert("خطأ","error"); }
+  };
+  const handleAddTherapist=async()=>{ if(!newTherapist.name||!newTherapist.phone){ showAlert("اسم ورقم المعالج مطلوب","error"); return; } try{ await db.collection("therapists").add({name:newTherapist.name,phone:newTherapist.phone,specialization:newTherapist.specialization,createdAt:new Date()}); showAlert(`✅ ${newTherapist.name}`,"success"); setNewTherapist({name:"",phone:"",specialization:""}); fetchData(); }catch(e){ showAlert("خطأ","error"); } };
+  const updateSession=async(id,data)=>{ await db.collection("schedules").doc(id).update(data); setSchedules(schedules.map(s=>s.id===id?{...s,...data}:s)); };
+  const handleSendOneSignal=()=>{
+    if(!notifTitle||!notifMsg){ showAlert("اكتب عنوان ورسالة","error"); return; }
+    // فتح لوحة OneSignal لإرسال الإشعار الحقيقي
+    window.open(`https://app.onesignal.com/apps/06265525-0c5a-43c1-8825-2e245ec16a05/messages/new`, "_blank");
+    showAlert("✅ انفتحت لوحة OneSignal - الصق العنوان والرسالة هناك واضغط Send","success");
+  };
+
+  return React.createElement("div", {className:"min-h-screen bg-[#f6f8fc]"},
+    React.createElement("header", {className:"sticky top-0 z-30 bg-white border-b shadow-sm"},
+      React.createElement("div", {className:"max-w-[1280px] mx-auto px-4 h-16 flex items-center justify-between"},
+        React.createElement("div", {className:"flex items-center gap-3"},
+          React.createElement("div", {className:"w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold"}, "ع"),
+          React.createElement("div", {}, React.createElement("div", {className:"font-bold text-[15px]"}, "عيادة التأهيل - OneSignal مفعل ✅"), React.createElement("div", {className:"text-[10px] text-emerald-600 font-bold"}, "App ID: 06265525...16a05 - جاهز"))
+        ),
+        React.createElement("div", {className:"flex items-center gap-2"},
+          React.createElement("button", {onClick:()=>{ if(window.OneSignal){ window.OneSignalDeferred.push(async function(OneSignal){ await OneSignal.Slidedown.promptPush(); }); } },className:"h-9 px-3 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-bold"}, "🔔 فعل الإشعارات"),
+          React.createElement("button", {onClick:handleLogout,className:"h-9 px-4 rounded-full bg-red-100 text-red-700 text-[12px] font-bold"}, "🚪 خروج")
+        )
+      )
+    ),
+    React.createElement("div", {className:"sticky top-16 z-20 bg-white border-b"},
+      React.createElement("div", {className:"max-w-[1280px] mx-auto px-4 flex gap-2 overflow-x-auto"},
+        [{id:"today-sessions",label:"🕐 جلسات اليوم"},{id:"add-patient",label:"➕ إضافة مراجع"},{id:"patients-list",label:"👥 المراجعين"},{id:"therapists",label:"👨⚕ الكادر"},{id:"notifications",label:"🔔 الإشعارات"}].map(t=>React.createElement("button", {key:t.id,onClick:()=>setTab(t.id),className:`h-12 px-4 whitespace-nowrap border-b-2 text-[13px] font-medium ${tab===t.id?"border-b-blue-600 text-blue-600 bg-blue-50/50":"border-b-transparent text-slate-600"}`}, t.label))
+      )
+    ),
+    alert&&React.createElement("div", {className:`fixed z-50 top-20 left-1/2 -translate-x-1/2 px-5 py-3 rounded-2xl shadow-xl text-[13px] font-bold ${alert.type==="error"?"bg-red-600 text-white":alert.type==="success"?"bg-emerald-600 text-white":"bg-blue-600 text-white"}`}, alert.msg),
+
+    React.createElement("main", {className:"max-w-[1280px] mx-auto p-4 pb-10"},
+      loading&&React.createElement("div", {className:"text-center py-10"}, "⏳ جاري التحميل..."),
+
+      !loading&&tab==="today-sessions"&&React.createElement("div", {className:"space-y-4"},
+        React.createElement("div", {className:"grid grid-cols-2 md:grid-cols-3 gap-3"},
+          React.createElement("div", {className:"bg-white rounded-2xl border p-5"}, React.createElement("div", {className:"text-[11px] text-blue-600 font-bold"}, "🕐 جلسات اليوم"), React.createElement("div", {className:"text-3xl font-bold text-blue-600 mt-2"}, todaySessions.length)),
+          React.createElement("div", {className:"bg-white rounded-2xl border p-5"}, React.createElement("div", {className:"text-[11px] font-bold"}, "💰 الإجمالي"), React.createElement("div", {className:"text-2xl font-bold mt-2"}, totalRevenue.toLocaleString()+" د.ع")),
+          React.createElement("div", {className:"bg-white rounded-2xl border p-5"}, React.createElement("div", {className:"text-[11px] text-emerald-600 font-bold"}, "✅ مدفوع"), React.createElement("div", {className:"text-2xl font-bold text-emerald-600 mt-2"}, paidRevenue.toLocaleString()+" د.ع"))
+        ),
+        React.createElement("div", {className:"bg-white rounded-[20px] border shadow-sm overflow-hidden"},
+          React.createElement("div", {className:"p-5 border-b bg-slate-50 font-bold text-[14px]"}, `📅 جدول اليوم - ${new Date().toLocaleDateString("ar-EG")} - ${todaySessions.length} جلسة`),
+          todaySessions.length>0?
+          React.createElement("div", {className:"overflow-x-auto"},
+            React.createElement("table", {className:"w-full text-[13px]"},
+              React.createElement("thead", {className:"bg-slate-100 text-[11px] text-slate-600"},
+                React.createElement("tr", {}, React.createElement("th", {className:"p-3 text-right"}, "🕐 الوقت"), React.createElement("th", {className:"p-3 text-right"}, "👤 المراجع"), React.createElement("th", {className:"p-3 text-right"}, "👨⚕ المعالج"), React.createElement("th", {className:"p-3 text-right"}, "📋 الحالة"), React.createElement("th", {className:"p-3 text-right"}, "💰 د.ع"), React.createElement("th", {className:"p-3 text-right"}, "💳"), React.createElement("th", {className:"p-3 text-right"}, "💬"))
+              ),
+              React.createElement("tbody", {},
+                todaySessions.map(s=>React.createElement("tr", {key:s.id,className:"border-t hover:bg-blue-50/50"},
+                  React.createElement("td", {className:"p-3 font-bold text-blue-600"}, s.time||"--:--"),
+                  React.createElement("td", {className:"p-3"}, React.createElement("div", {className:"font-bold"}, s.patientName), React.createElement("div", {className:"text-[11px] text-slate-500"}, s.injury_type||"-")),
+                  React.createElement("td", {className:"p-3"}, s.therapistName||"-"),
+                  React.createElement("td", {className:"p-3"}, React.createElement("select", {value:s.status||"قادمة",onChange:(e)=>updateSession(s.id,{status:e.target.value}),className:"text-[11px] px-2 py-1 rounded-full border font-bold"}, React.createElement("option", {}, "قادمة"), React.createElement("option", {}, "مكتملة"), React.createElement("option", {}, "ملغاة"))),
+                  React.createElement("td", {className:"p-3"}, React.createElement("input", {type:"number",defaultValue:s.price,onBlur:(e)=>{ if(e.target.value!==s.price) updateSession(s.id,{price:e.target.value}); },placeholder:"0",className:"w-20 h-8 px-2 rounded-lg border text-[12px]"})),
+                  React.createElement("td", {className:"p-3"}, React.createElement("button", {onClick:()=>updateSession(s.id,{paid:!s.paid}),className:`px-3 py-1 rounded-full text-[11px] font-bold ${s.paid?"bg-emerald-600 text-white":"bg-red-600 text-white"}`}, s.paid?"✓ مدفوع":"✗ غير مدفوع")),
+                  React.createElement("td", {className:"p-3"}, React.createElement("a", {href:formatToWhatsApp(s.patientPhone),target:"_blank",className:"w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center"}, "💬"))
+                ))
+              )
+            )
+          )
+          : React.createElement("div", {className:"p-12 text-center"}, "😊 لا توجد جلسات اليوم")
+        )
+      ),
+
+      !loading&&tab==="add-patient"&&React.createElement("div", {className:"grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-4"},
+        React.createElement("div", {className:"bg-white rounded-[20px] border p-6"},
+          React.createElement("h2", {className:"font-bold mb-4"}, "➕ إضافة مريض - العمر بالأشهر والأيام"),
+          React.createElement("div", {className:"space-y-3"},
+            React.createElement("div", {className:"grid grid-cols-2 gap-3"},
+              React.createElement("input", {value:newPatient.name,onChange:(e)=>setNewPatient({...newPatient,name:e.target.value}),placeholder:"الاسم *",className:"h-10 px-3 rounded-xl border text-[13px]"}),
+              React.createElement("input", {value:newPatient.phone,onChange:(e)=>setNewPatient({...newPatient,phone:e.target.value}),placeholder:"الموبايل *",className:"h-10 px-3 rounded-xl border text-[13px]",style:{direction:"ltr"}})
+            ),
+            React.createElement("div", {className:"grid grid-cols-3 gap-2"},
+              React.createElement("input", {type:"number",value:newPatient.age_value,onChange:(e)=>setNewPatient({...newPatient,age_value:e.target.value}),placeholder:"العمر",className:"h-10 px-3 rounded-xl border text-[13px]"}),
+              React.createElement("select", {value:newPatient.age_unit,onChange:(e)=>setNewPatient({...newPatient,age_unit:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"}, React.createElement("option", {}, "سنة"), React.createElement("option", {}, "شهر"), React.createElement("option", {}, "أشهر"), React.createElement("option", {}, "يوم"), React.createElement("option", {}, "أيام")),
+              React.createElement("select", {value:newPatient.gender,onChange:(e)=>setNewPatient({...newPatient,gender:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"}, React.createElement("option", {}, "ذكر"), React.createElement("option", {}, "أنثى"))
+            ),
+            React.createElement("input", {value:newPatient.address,onChange:(e)=>setNewPatient({...newPatient,address:e.target.value}),placeholder:"العنوان",className:"w-full h-10 px-3 rounded-xl border text-[13px]"}),
+            React.createElement("div", {className:"grid grid-cols-2 gap-3"},
+              React.createElement("select", {value:newPatient.injury_type,onChange:(e)=>setNewPatient({...newPatient,injury_type:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"}, React.createElement("option", {value:""}, "نوع الإصابة..."), injuryTypes.map(t=>React.createElement("option", {key:t,value:t}, t))),
+              React.createElement("select", {value:newPatient.therapist_name,onChange:(e)=>setNewPatient({...newPatient,therapist_name:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"}, React.createElement("option", {value:""}, "المعالج..."), therapists.map(t=>React.createElement("option", {key:t.id,value:t.name}, t.name)))
+            )
+          )
+        ),
+        React.createElement("div", {className:"bg-white rounded-[20px] border p-6 h-fit"},
+          React.createElement("h3", {className:"font-bold mb-4 text-[14px]"}, "📅 أيام الحجز"),
+          React.createElement("div", {className:"space-y-2"},
+            daysOrder.map(day=>React.createElement("label", {key:day,className:`p-3 rounded-xl border-2 flex items-center gap-3 cursor-pointer ${selectedDays.includes(day)?"border-blue-600 bg-blue-50":"border-slate-200"}`},
+              React.createElement("input", {type:"checkbox",checked:selectedDays.includes(day),onChange:(e)=>{ if(e.target.checked) setSelectedDays([...selectedDays,day]); else setSelectedDays(selectedDays.filter(d=>d!==day)); }}),
+              React.createElement("span", {className:"font-bold text-[13px] flex-1"}, daysMap[day]),
+              React.createElement("input", {type:"time",value:sessionTimes[day],onChange:(e)=>setSessionTimes({...sessionTimes,[day]:e.target.value}),className:"h-8 px-2 rounded-lg border text-[12px]"})
+            ))
+          ),
+          React.createElement("button", {onClick:handleAddPatient,className:"mt-6 w-full h-11 bg-blue-600 text-white rounded-xl font-bold"}, "✅ حفظ المريض والجلسات")
+        )
+      ),
+
+      !loading&&tab==="patients-list"&&React.createElement("div", {className:"bg-white rounded-[20px] border p-6"},
+        React.createElement("h2", {className:"font-bold mb-4"}, `👥 المراجعين (${patients.length})`),
+        React.createElement("div", {className:"grid grid-cols-1 md:grid-cols-2 gap-3"},
+          patients.map(p=>React.createElement("div", {key:p.id,className:"p-4 rounded-2xl border hover:border-blue-300"},
+            React.createElement("div", {className:"flex justify-between"},
+              React.createElement("div", {className:"font-bold text-[13px]"}, p.name),
+              React.createElement("div", {className:"flex gap-1"},
+                React.createElement("a", {href:formatToWhatsApp(p.phone),target:"_blank",className:"w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center"}, "💬"),
+                React.createElement("button", {onClick:()=>{ const nn=prompt("الاسم:",p.name); if(nn){ db.collection("patients").doc(p.id).update({name:nn}).then(()=>fetchData()); } },className:"w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center"}, "✏️")
+              )
+            ),
+            React.createElement("div", {className:"text-[11px] text-slate-500 mt-1"}, `📱 ${p.phone} • ${p.age||"-"}`)
+          ))
+        )
+      ),
+
+      !loading&&tab==="therapists"&&React.createElement("div", {className:"grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-4"},
+        React.createElement("div", {className:"bg-white rounded-[20px] border p-6 h-fit"},
+          React.createElement("h3", {className:"font-bold mb-4"}, "➕ إضافة كادر"),
+          React.createElement("div", {className:"space-y-3"},
+            React.createElement("input", {value:newTherapist.name,onChange:(e)=>setNewTherapist({...newTherapist,name:e.target.value}),placeholder:"اسم المعالج *",className:"w-full h-10 px-3 rounded-xl border text-[13px]"}),
+            React.createElement("input", {value:newTherapist.phone,onChange:(e)=>setNewTherapist({...newTherapist,phone:e.target.value}),placeholder:"رقم الهاتف *",className:"w-full h-10 px-3 rounded-xl border text-[13px]",style:{direction:"ltr"}}),
+            React.createElement("input", {value:newTherapist.specialization,onChange:(e)=>setNewTherapist({...newTherapist,specialization:e.target.value}),placeholder:"التخصص",className:"w-full h-10 px-3 rounded-xl border text-[13px]"}),
+            React.createElement("button", {onClick:handleAddTherapist,className:"w-full h-11 bg-blue-600 text-white rounded-xl font-bold"}, "✅ إضافة")
+          )
+        ),
+        React.createElement("div", {className:"bg-white rounded-[20px] border p-6"},
+          React.createElement("h3", {className:"font-bold mb-4"}, `👨⚕ الكادر (${therapists.length})`),
+          React.createElement("div", {className:"space-y-2"},
+            therapists.map(t=>React.createElement("div", {key:t.id,className:"p-4 rounded-2xl border flex justify-between items-center"},
+              React.createElement("div", {}, React.createElement("div", {className:"font-bold text-[13px]"}, t.name), React.createElement("div", {className:"text-[11px] text-slate-500"}, `📱 ${t.phone} - ${t.specialization||"-"}`)),
+              React.createElement("div", {className:"flex gap-1"},
+                React.createElement("a", {href:formatToWhatsApp(t.phone),target:"_blank",className:"w-8 h-8 bg-green-100 rounded-full flex items-center justify-center"}, "💬"),
+                React.createElement("button", {onClick:async()=>{ if(confirm("حذف؟")){ await db.collection("therapists").doc(t.id).delete(); fetchData(); }},className:"w-8 h-8 bg-red-50 text-red-600 rounded-full flex items-center justify-center"}, "🗑️")
+              )
+            ))
+          )
+        )
+      ),
+
+      !loading&&tab==="notifications"&&React.createElement("div", {className:"grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-4"},
+        React.createElement("div", {className:"bg-white rounded-[20px] border p-6 shadow-sm"},
+          React.createElement("div", {className:"flex items-center gap-2 mb-2"},
+            React.createElement("div", {className:"w-3 h-3 bg-emerald-500 rounded-full animate-pulse"}),
+            React.createElement("h2", {className:"font-bold text-[16px]"}, "🔔 إرسال إشعار فوري - OneSignal مفعل")
+          ),
+          React.createElement("div", {className:"p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-800 mb-4"}, "✅ App ID مربوط: 06265525-0c5a-43c1-8825-2e245ec16a05 - الإشعارات جاهزة"),
+          React.createElement("div", {className:"space-y-4"},
+            React.createElement("div", {}, React.createElement("label", {className:"text-[12px] font-bold"}, "عنوان الإشعار"), React.createElement("input", {value:notifTitle,onChange:(e)=>setNotifTitle(e.target.value),placeholder:"مثال: تذكير بموعد الجلسة",className:"mt-1 w-full h-11 px-4 rounded-xl border-2 text-[13px]"})),
+            React.createElement("div", {}, React.createElement("label", {className:"text-[12px] font-bold"}, "نص الرسالة"), React.createElement("textarea", {value:notifMsg,onChange:(e)=>setNotifMsg(e.target.value),placeholder:"مرحباً أحمد، نذكرك بموعد جلستك اليوم الساعة 9 صباحاً...",rows:4,className:"mt-1 w-full p-4 rounded-xl border-2 text-[13px]"})),
+            React.createElement("button", {onClick:handleSendOneSignal,className:"w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg"}, "🚀 فتح لوحة الإرسال في OneSignal"),
+            React.createElement("div", {className:"p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800"},
+              "💡 بعد الضغط، الصق العنوان والرسالة في لوحة OneSignal واضغط Send Message - ستصل لكل المشتركين فوراً حتى لو الموقع مغلق"
+            )
+          )
+        ),
+        React.createElement("div", {className:"bg-white rounded-[20px] border p-6 h-fit"},
+          React.createElement("h3", {className:"font-bold text-[14px] mb-4"}, "📱 حالة الإشعارات"),
+          React.createElement("div", {className:"space-y-3 text-[12px]"},
+            React.createElement("button", {onClick:()=>{ window.OneSignalDeferred.push(async function(OneSignal){ const isPushEnabled = await OneSignal.User.PushSubscription.optedIn; alert(isPushEnabled ? "✅ الإشعارات مفعلة عندك" : "❌ الإشعارات غير مفعلة - اضغط Allow"); }); },className:"w-full h-10 bg-slate-100 rounded-xl font-bold"}, "🔍 هل الإشعارات مفعلة عندي؟"),
+            React.createElement("button", {onClick:()=>{ window.OneSignalDeferred.push(async function(OneSignal){ await OneSignal.Slidedown.promptPush(); }); },className:"w-full h-10 bg-emerald-600 text-white rounded-xl font-bold"}, "🔔 تفعيل الإشعارات الآن"),
+            React.createElement("div", {className:"mt-4 p-3 bg-amber-50 border rounded-xl text-[11px]"},
+              React.createElement("div", {className:"font-bold"}, "خطوات للمريض:"),
+              React.createElement("div", {className:"mt-2 space-y-1"}, React.createElement("div", {}, "1. يفتح رابط العيادة"), React.createElement("div", {}, "2. يضغط Allow"), React.createElement("div", {}, "3. تصله كل الإشعارات"))
+            ),
+            React.createElement("a", {href:"https://app.onesignal.com/apps/06265525-0c5a-43c1-8825-2e245ec16a05",target:"_blank",className:"block mt-4 w-full h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-bold text-[12px]"}, "🔗 فتح لوحة التحكم")
+          )
+        )
+      )
+    )
+  );
+}
+const root=ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(App));
 </script>
 </body>
 </html>
