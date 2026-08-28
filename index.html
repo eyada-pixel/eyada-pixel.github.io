@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>عيادة التأهيل - تعديل شامل</title>
+<title>عيادة رقية للعلاج الطبيعي</title>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
@@ -39,7 +39,7 @@ try{ if(!firebase.apps.length) firebase.initializeApp(firebaseConfig); db=fireba
 const { useState, useEffect, useRef } = React;
 const daysMap = { 6: "السبت", 0: "الأحد", 1: "الاثنين", 2: "الثلاثاء", 3: "الأربعاء", 4: "الخميس", 5: "الجمعة (عطلة)" };
 const daysOrder = [6, 0, 1, 2, 3, 4];
-const injuryTypes = ["خشونة ركبة", "انزلاق غضروفي", "جلطة", "قطع رباط", "كسر", "تأهيل بعد عملية", "شد عضلي", "أخرى"];
+const injuryTypes = ["خشونة ركبة","خلع ولادي", "انزلاق غضروفي", "جلطة", "قطع رباط", "كسر", "تأهيل بعد عملية", "شد عضلي", "أخرى"];
 function formatToWhatsApp(phone){ if(!phone) return "#"; let p=phone.replace(/\D/g,""); if(p.startsWith("0")) p="964"+p.substring(1); if(!p.startsWith("964")) p="964"+p; return `https://wa.me/${p}`; }
 function timeToMinutes(t){ const [h,m]=t.split(":").map(Number); return h*60+m; }
 
@@ -210,7 +210,7 @@ function App(){
       React.createElement("div", {className:"max-w-[1280px] mx-auto px-4 h-16 flex items-center justify-between"},
         React.createElement("div", {className:"flex items-center gap-3"},
           React.createElement("div", {className:"w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold"}, "ع"),
-          React.createElement("div", {}, React.createElement("div", {className:"font-bold text-[15px]"}, "عيادة التأهيل - تعديل شامل ✅"), React.createElement("div", {className:"text-[10px] text-emerald-600 font-bold"}, "تعديل + حذف + تضارب"))
+          React.createElement("div", {}, React.createElement("div", {className:"font-bold text-[15px]"}, "عيادة رقية للعلاج الطبيعي ✅"), React.createElement("div", {className:"text-[10px] text-emerald-600 font-bold"}, "تعديل + حذف + تضارب"))
         ),
         React.createElement("div", {className:"flex items-center gap-2"},
           React.createElement("button", {onClick:()=>{ if(window.OneSignal){ window.OneSignalDeferred.push(async function(OneSignal){ await OneSignal.Slidedown.promptPush(); }); } },className:"h-9 px-3 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-bold"}, "🔔 فعل الإشعارات"),
