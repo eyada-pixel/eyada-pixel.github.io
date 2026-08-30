@@ -106,6 +106,15 @@ function App(){
         if(sd.getDay()===5){ showAlert("الجمعة عطلة","error"); return; }
         const dateStr=sd.toISOString().split("T")[0];
         const timeStr=sessionTimes[dayNum];
+        // فحص ايام دوام المعالج
+        const therapistData = therapists.find(t=>t.name===newPatient.therapist_name);
+        if(therapistData && therapistData.availableDays && therapistData.availableDays.length>0){
+          const dayOfWeek = sd.getDay();
+          if(!therapistData.availableDays.includes(dayOfWeek)){
+            showAlert(`⚠ المعالج ${therapistData.name} لا يداوم يوم ${daysMap[dayOfWeek]} - دوامه: ${therapistData.availableDays.map(d=>daysMap[d].replace(" (عطلة)","")).join("، ")}`,"error");
+            return;
+          }
+        }
         const conflict = checkConflict(newPatient.therapist_name, dateStr, timeStr);
         if(conflict){ showAlert(`⚠ تضارب! المعالج ${newPatient.therapist_name} لديه ${conflict.patientName} يوم ${dateStr} الساعة ${conflict.time}`,"error"); return; }
         datesToCheck.push({date:sd,time:timeStr,dateStr});
@@ -122,6 +131,20 @@ function App(){
 
   const updateSession=async(id,data)=>{ 
     if(data.time || data.therapistName || data.date){
+      // فحص دوام عند تعديل الجلسة
+      if(data.therapistName || data.date){
+        const sessCheck = schedules.find(s=>s.id===id);
+        const checkTherapist = data.therapistName || sessCheck.therapistName;
+        const checkDate = data.date || sessCheck.date;
+        const thData = therapists.find(t=>t.name===checkTherapist);
+        if(thData && thData.availableDays && thData.availableDays.length>0 && checkDate){
+          const d = new Date(checkDate).getDay();
+          if(!thData.availableDays.includes(d)){
+            showAlert(`⚠ ${thData.name} لا يداوم يوم ${daysMap[d]}`,`error`);
+            return;
+          }
+        }
+      }
       const sess = schedules.find(s=>s.id===id);
       const newTime = data.time || sess.time;
       const newTherapistName = data.therapistName || sess.therapistName;
@@ -330,7 +353,13 @@ function App(){
             React.createElement("input", {value:newPatient.address,onChange:(e)=>setNewPatient({...newPatient,address:e.target.value}),placeholder:"العنوان",className:"w-full h-10 px-3 rounded-xl border text-[13px]"}),
             React.createElement("div", {className:"grid grid-cols-2 gap-3"},
               React.createElement("select", {value:newPatient.injury_type,onChange:(e)=>setNewPatient({...newPatient,injury_type:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px]"}, React.createElement("option", {value:""}, "نوع الإصابة..."), injuryTypes.map(t=>React.createElement("option", {key:t,value:t}, t))),
-              React.createElement("select", {value:newPatient.therapist_name,onChange:(e)=>setNewPatient({...newPatient,therapist_name:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px] bg-amber-50 border-amber-300"}, React.createElement("option", {value:""}, "المعالج *"), therapists.map(t=>React.createElement("option", {key:t.id,value:t.name}, t.name)))
+              React.createElement("select", {value:newPatient.therapist_name,onChange:(e)=>setNewPatient({...newPatient,therapist_name:e.target.value}),className:"h-10 px-3 rounded-xl border text-[13px] bg-amber-50 border-amber-300"}, 
+                React.createElement("option", {value:""}, "المعالج *"), 
+                therapists.map(t=>{
+                  const daysText = t.availableDays && t.availableDays.length>0 ? ` - ${t.availableDays.map(d=>daysMap[d].replace(" (عطلة)","").substring(0,3)).join("/")}` : " - كل الأيام";
+                  return React.createElement("option", {key:t.id,value:t.name}, `${t.name}${daysText}`);
+                })
+              )
             )
           )
         ),
