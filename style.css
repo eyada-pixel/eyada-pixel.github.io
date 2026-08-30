@@ -1,0 +1,7 @@
+body{
+    font-family:'Tajawal',sans-serif;
+    background:#f6f8fc;
+}
+@media print { 
+    header, .no-print { display:none !important; } 
+}
